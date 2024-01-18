@@ -1,0 +1,20 @@
+vcftools --gzvcf /Users/yaz/Desktop/LIFE4141/LAB_NEN_ODN.clean_BI.ann.3mbChr5.vcf.gz \
+--max-missing 0.8 \
+--maf 0.05 \
+--weir-fst-pop /Users/yaz/LAB_population.txt \
+--weir-fst-pop /Users/yaz/NEN_population.txt \
+--fst-window-size 5000 \
+--fst-window-step 5000 \
+--out /Users/yaz/Desktop/LIFE4141/fst_output
+
+sort -k3,3nr /Users/yaz/Desktop/LIFE4141/fst_output.windowed.weir.fst | head -n $(($(wc -l < /Users/yaz/Desktop/LIFE4141/fst_output.windowed.weir.fst) / 100))
+
+stop_one_percent_line_count=$(($(wc -l < /Users/yaz/Desktop/LIFE4141/fst_output.windowed.weir.fst) / 100))
+
+head -n $stop_one_percent_line_count /Users/yaz/Desktop/LIFE4141/fst_output.windowed.weir.fst > /Users/yaz/Desktop/LIFE4141/top_1_percent_fst.txt
+
+##3
+bedtools intersect -a /Users/yaz/Desktop/fst_high_windows.bed  -b /Users/yaz/Desktop/dryad/C_excelsa_V5_braker2_wRseq.gff3 > candidate_genes.bed
+
+
+
