@@ -1,0 +1,108 @@
+library(adegenet)
+library(vcfR)
+
+vcfR2genlight.tetra <- function(x, n.cores = 1){
+  bi <- is.biallelic(x)
+  if (sum(!bi) > 0) {
+    msg <- paste("Found", sum(!bi), "loci with more than two alleles.")
+    msg <- c(msg, "\n", paste("Objects of class genlight only support loci with two alleles."))
+    msg <- c(msg, "\n", paste(sum(!bi), "loci will be omitted from the genlight object."))
+    warning(msg)
+    x <- x[bi, ]
+  }
+  x <- addID(x)
+  CHROM <- x@fix[, "CHROM"]
+  POS <- x@fix[, "POS"]
+  ID <- x@fix[, "ID"]
+  x <- extract.gt(x)
+  x[x == "0|0"] <- 0
+  x[x == "0|1"] <- 1
+  x[x == "1|0"] <- 1
+  x[x == "1|1"] <- 2
+  x[x == "0/0"] <- 0
+  x[x == "0/1"] <- 1
+  x[x == "1/0"] <- 1
+  x[x == "1/1"] <- 2
+  x[x == "1/1/1/1"] <- 4
+  x[x == "0/1/1/1"] <- 3
+  x[x == "0/0/1/1"] <- 2
+  x[x == "0/0/0/1"] <- 1
+  x[x == "0/0/0/0"] <- 0
+  x[x == "0/0/0/0/0/0"] <- 0
+  x[x == "0/0/0/0/0/1"] <- 1
+  x[x == "0/0/0/0/1/1"] <- 2
+  x[x == "0/0/0/1/1/1"] <- 3
+  x[x == "0/0/1/1/1/1"] <- 4
+  x[x == "0/1/1/1/1/1"] <- 5
+  x[x == "1/1/1/1/1/1"] <- 6
+  if (requireNamespace("adegenet")) {
+    x <- new("genlight", t(x), n.cores = n.cores)
+  }
+  else {
+    warning("adegenet not installed")
+  }
+  adegenet::chromosome(x) <- CHROM
+  adegenet::position(x) <- POS
+  adegenet::locNames(x) <- ID
+  return(x)
+}
+
+glPcaFast <- function(x, center = TRUE, scale = FALSE, nf = NULL) {
+   # Ensure the input is a genlight object
+    if (!inherits(x, "genlight")) {
+        stop("x is not a genlight object")
+    }
+
+    # Preparing the data: centering and scaling
+    vecMeans <- if(center) glMean(x) else NULL
+    vecVar <- if(scale) glVar(x) else NULL
+
+    # Convert genotype data to numeric matrix and handle NAs
+    mx <- t(sapply(x$gen, as.integer)) / ploidy(x)
+    NAidx <- which(is.na(mx), arr.ind = TRUE)
+    if (center) {
+        mx[NAidx] <- vecMeans[NAidx[, 2]]
+    } else {
+        mx[NAidx] <- 0
+    }
+    mx <- scale(mx, center = vecMeans, scale = vecVar)
+
+    # Perform eigenanalysis for PCA
+    allProd <- tcrossprod(mx) / nInd(x)
+    eigRes <- eigen(allProd, symmetric = TRUE, only.values = FALSE)
+    rank <- sum(eigRes$values > 1e-12)
+    eigRes$values <- eigRes$values[1:rank]
+    eigRes$vectors <- eigRes$vectors[, 1:rank, drop = FALSE]
+
+    # Determine the number of principal components to retain
+    if (is.null(nf)) {
+        nf <- min(rank, sum(eigRes$values > 1e-10))
+    }
+
+    # Rescale principal components
+    res <- list()
+    res$eig <- eigRes$values
+    eigRes$vectors <- eigRes$vectors * sqrt(nInd(x))
+    res$scores <- sweep(eigRes$vectors, 2, sqrt(eigRes$values), FUN = "*")
+
+    # Format output
+    colnames(res$scores) <- paste("PC", 1:nf, sep = "")
+    rownames(res$scores) <- indNames(x)
+
+    # Return result as a list
+    res$call <- match.call()
+    class(res) <- "glPca"
+    return(res)
+}
+
+# Run PCA
+pca.1 <- glPcaFast(aa.genlight, nf = 300)
+
+# Plot PCA results and color code by population
+col <- rainbow(length(unique(pop(aa.genlight))))
+s.class(pca.1$scores, pop(aa.genlight), xax = 1, yax = 2, col = col)
+
+# Save the plot
+pdf("PCA_plot.pdf")
+s.class(pca.1$scores, pop(aa.genlight), xax = 1, yax = 2, col = col)
+dev.off()
